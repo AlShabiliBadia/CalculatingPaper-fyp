@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "708526420933",
+    "project_id": "calculatingpaper-86f6b",
+    "storage_bucket": "calculatingpaper-86f6b.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:708526420933:android:9386a74d03febfd6c751ac",
+        "android_client_info": {
+          "package_name": "com.example.calculatingpaper"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "708526420933-8sppqj8tliutqi89faps36anugogrt8h.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.calculatingpaper",
+            "certificate_hash": "6057755db113eceabaadefcc3b3fb7c6cd6870da"
+          }
+        },
+        {
+          "client_id": "708526420933-pult9ej912ieval4ta6b98dvm3ntpnvq.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAyQcPn9D_QHDp-VdLZsKMIL23mxZjuszQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "708526420933-pult9ej912ieval4ta6b98dvm3ntpnvq.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
