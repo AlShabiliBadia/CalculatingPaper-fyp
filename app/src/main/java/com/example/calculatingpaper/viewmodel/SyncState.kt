@@ -7,6 +7,7 @@ sealed class SyncCheckState {
     object CanEnableDirectly : SyncCheckState()
     data class Error(val message: String) : SyncCheckState()
 }
+
 sealed class SyncActivationState {
     object Idle : SyncActivationState()
     data class Running(val message: String) : SyncActivationState()

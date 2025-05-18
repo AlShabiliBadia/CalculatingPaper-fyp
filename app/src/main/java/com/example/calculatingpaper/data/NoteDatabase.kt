@@ -9,7 +9,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
-@Database(entities = [Note::class, Folder::class], version = 4)
+@Database(entities = [Note::class, Folder::class], version = 7)
 abstract class NoteDatabase : RoomDatabase() {
     abstract fun noteDao(): NoteDao
 
@@ -33,9 +33,9 @@ abstract class NoteDatabase : RoomDatabase() {
                                     INSERT OR IGNORE INTO folders 
                                     (id, title, parentId, timestamp, isArchived, isInTrash, isRoot) 
                                     VALUES 
-                                    (0, 'Main', 0, ${System.currentTimeMillis()}, 0, 0, 1),
-                                    (-1, 'Archive', 0, ${System.currentTimeMillis()}, 1, 0, 0),
-                                    (-2, 'Recycle Bin', 0, ${System.currentTimeMillis()}, 0, 1, 0)
+                                    (-1, 'Main', 0, ${System.currentTimeMillis()}, 0, 0, 1),
+                                    (-2, 'Archive', 0, ${System.currentTimeMillis()}, 1, 0, 0),
+                                    (-3, 'Recycle Bin', 0, ${System.currentTimeMillis()}, 0, 1, 0)
                                 """)
                             }
                         }

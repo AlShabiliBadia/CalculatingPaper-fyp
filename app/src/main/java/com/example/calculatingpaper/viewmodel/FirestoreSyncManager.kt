@@ -54,16 +54,21 @@ class FirestoreSyncManager(
                 val foldersCollection = firestore.collection("users").document(userId).collection("folders")
                 val notesSnapshot = notesCollection.limit(1).get().await()
                 val foldersSnapshot = foldersCollection.limit(1).get().await()
-                if (notesSnapshot.isEmpty && foldersSnapshot.isEmpty) {
-                    val localNotes = noteDao.getAllNotesForBackup()
-                    val localFolders = noteDao.getAllFoldersForBackup()
-                    if(localNotes.isEmpty() && localFolders.isEmpty()){
-                        _syncCheckState.value = SyncCheckState.CanEnableDirectly
-                    } else {
-                        _syncCheckState.value = SyncCheckState.RequiresUploadConfirmation
-                    }
-                } else {
+                val cloudDataExists = !notesSnapshot.isEmpty || !foldersSnapshot.isEmpty
+
+                val localUserNotes = noteDao.getAllNotesForBackup()
+                val allLocalFolders = noteDao.getAllFoldersForBackup()
+                val localUserFolders = allLocalFolders.filter { folder ->
+                    !SpecialFolders.isSpecial(folder.id) && folder.id != SpecialFolders.ROOT && !folder.isRoot
+                }
+                val localUserDataExists = localUserNotes.isNotEmpty() || localUserFolders.isNotEmpty()
+
+                if (localUserDataExists && cloudDataExists) {
                     _syncCheckState.value = SyncCheckState.RequiresDownloadConfirmation
+                } else if (localUserDataExists && !cloudDataExists) {
+                    _syncCheckState.value = SyncCheckState.RequiresUploadConfirmation
+                } else {
+                    _syncCheckState.value = SyncCheckState.CanEnableDirectly
                 }
             } catch (e: Exception) {
                 _syncCheckState.value = SyncCheckState.Error("Failed to check Firestore: ${e.message}")
@@ -162,39 +167,52 @@ class FirestoreSyncManager(
             _syncActivationState.value = SyncActivationState.Running("Uploading local data...")
             try {
                 val localNotes = noteDao.getAllNotesForBackup()
-                val localFolders = noteDao.getAllFoldersForBackup()
+                val allLocalFolders = noteDao.getAllFoldersForBackup()
+                val localUserFoldersToUpload = allLocalFolders.filter { folder ->
+                    !SpecialFolders.isSpecial(folder.id) && folder.id != SpecialFolders.ROOT && !folder.isRoot
+                }
+
                 val notesCollection = firestore.collection("users").document(userId).collection("notes")
                 val foldersCollection = firestore.collection("users").document(userId).collection("folders")
+
                 _syncActivationState.value = SyncActivationState.Running("Uploading folders...")
                 val folderIdMap = mutableMapOf<Long, String>()
-                localFolders.forEach { folder ->
+                localUserFoldersToUpload.forEach { folder ->
                     try {
-                        val parentCloudId = if (folder.parentId != SpecialFolders.ROOT) folderIdMap[folder.parentId] else null
+                        val parentCloudId = if (folder.parentId != SpecialFolders.ROOT && !SpecialFolders.isSpecial(folder.parentId)) folderIdMap[folder.parentId] else null
                         val firestoreData = createFolderFirestoreMap(folder, parentCloudId)
                         val docRef = foldersCollection.add(firestoreData).await()
                         noteDao.updateFolderCloudId(folder.id, docRef.id)
                         folderIdMap[folder.id] = docRef.id
-                    } catch (e: Exception) {  }
+                    } catch (e: Exception) {
+                        Log.e("FirestoreSync", "Error uploading folder: ${folder.id}", e)
+                    }
                 }
+
                 _syncActivationState.value = SyncActivationState.Running("Uploading notes...")
                 localNotes.forEach { note ->
                     try {
-                        val parentCloudId = if (note.parentId != SpecialFolders.ROOT) folderIdMap[note.parentId] else null
+                        val parentCloudId = if (note.parentId != SpecialFolders.ROOT && !SpecialFolders.isSpecial(note.parentId)) folderIdMap[note.parentId] else null
                         val firestoreData = createNoteFirestoreMap(note, parentCloudId)
                         val docRef = notesCollection.add(firestoreData).await()
                         noteDao.updateNoteCloudId(note.id, docRef.id)
-                    } catch (e: Exception) {  }
+                    } catch (e: Exception) {
+                        Log.e("FirestoreSync", "Error uploading note: ${note.id}", e)
+                    }
                 }
+
                 appPreferences.saveRealtimeSyncEnabled(true)
                 _syncActivationState.value = SyncActivationState.Running("Starting sync listeners...")
                 startListeners()
                 _syncActivationState.value = SyncActivationState.Success
             } catch (e: Exception) {
                 _syncActivationState.value = SyncActivationState.Error("Initial sync activation failed: ${e.message}")
+                Log.e("FirestoreSync", "Initial sync activation failed", e)
                 appPreferences.saveRealtimeSyncEnabled(false)
             }
         }
     }
+
     fun resetSyncCheckState() { _syncCheckState.value = SyncCheckState.Idle }
     fun resetSyncActivationState() { _syncActivationState.value = SyncActivationState.Idle }
     private fun setupNoteListener(userId: String) {

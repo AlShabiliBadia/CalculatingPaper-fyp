@@ -96,10 +96,25 @@ class NoteViewModel(application: Application) : AndroidViewModel(application) {
     fun clearImportState() = backupRestoreManager.clearImportState()
     suspend fun hasUserData(): Boolean = backupRestoreManager.hasUserData()
     suspend fun addNote(note: Note): Long {
-        val generatedRoomId = noteDao.insertNote(note)
-        val noteWithId = note.copy(id = generatedRoomId)
-        firestoreSyncManager.syncNoteChange(noteWithId)
-        return generatedRoomId
+        var noteToInsert = note
+        if (note.parentId == SpecialFolders.ROOT) {
+            val rootFolder = noteDao.getRootFolder()
+            if (rootFolder != null) {
+                noteToInsert = note.copy(parentId = rootFolder.id)
+            } else {
+                println("Error: Root folder not found in database. Cannot save note to root.")
+                return 0L
+            }
+        }
+        val newNoteId = noteDao.insertNote(noteToInsert)
+
+        if (newNoteId > 0L && appPreferences.isRealtimeSyncEnabled()) {
+            val savedNote = noteDao.getNoteById(newNoteId)
+            if (savedNote != null) {
+                firestoreSyncManager.syncNoteChange(savedNote)
+            }
+        }
+        return newNoteId
     }
     suspend fun updateNote(note: Note) {
         noteDao.updateNote(note)

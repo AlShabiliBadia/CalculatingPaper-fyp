@@ -6,42 +6,34 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import com.example.calculatingpaper.viewmodel.NoteViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.calculatingpaper.R
 import com.example.calculatingpaper.data.AppPreferences
+import com.example.calculatingpaper.viewmodel.*
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInAccount
-import com.google.android.gms.auth.api.signin.GoogleSignInClient
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.google.android.gms.common.api.ApiException
 import com.google.android.gms.tasks.Task
-import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.auth.ktx.auth
 import com.google.firebase.ktx.Firebase
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import androidx.compose.material3.Switch
-import androidx.compose.material3.Surface
-import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.text.input.KeyboardType
-import com.example.calculatingpaper.viewmodel.SyncActivationState
-import com.example.calculatingpaper.viewmodel.SyncCheckState
-import com.example.calculatingpaper.viewmodel.DataImportState
-import com.example.calculatingpaper.viewmodel.DataResetState
-import androidx.compose.foundation.text.KeyboardOptions
-
 private data class SyncConfirmationDetails(
     val state: SyncCheckState,
     val title: String,
@@ -75,40 +67,37 @@ fun SettingsScreen(
     var importUriToProcess by remember { mutableStateOf<Uri?>(null) }
     var showImportOptionsDialog by remember { mutableStateOf(false) }
     val importState by noteViewModel.importState.collectAsState()
-    var isRealtimeSyncEnabled by remember(isLoggedIn) {
+    var isRealtimeSyncEnabled by remember(isLoggedIn, syncActivationState) {
         mutableStateOf(if (isLoggedIn) appPreferences.isRealtimeSyncEnabled() else false)
     }
     LaunchedEffect(syncCheckState) {
         val userId = appPreferences.getUserId()
+        if (userId == null && (syncCheckState is SyncCheckState.RequiresDownloadConfirmation || syncCheckState is SyncCheckState.RequiresUploadConfirmation)) {
+            Toast.makeText(context, "Error: Not logged in.", Toast.LENGTH_SHORT).show()
+            isRealtimeSyncEnabled = false
+            noteViewModel.resetSyncCheckState()
+            return@LaunchedEffect
+        }
+
         when (val state = syncCheckState) {
             is SyncCheckState.RequiresDownloadConfirmation -> {
-                if (userId != null) {
-                    syncConfirmationDetails = SyncConfirmationDetails(
-                        state = state,
-                        title = "Enable Cloud Sync?",
-                        text = "Cloud data found. Enabling sync will REPLACE all your local notes and folders with the data from the cloud. Backup your local data first if you need it. Continue?",
-                        confirmAction = { noteViewModel.proceedWithSyncActivation(userId) }
-                    )
-                    showSyncConfirmDialog = true
-                } else {
-                    Toast.makeText(context, "Error: Not logged in.", Toast.LENGTH_SHORT).show()
-                    isRealtimeSyncEnabled = false
-                }
+                syncConfirmationDetails = SyncConfirmationDetails(
+                    state = state,
+                    title = "Enable Cloud Sync?",
+                    text = "Cloud data found. Enabling sync will REPLACE all your current local data with data from the cloud. Backup local data first if needed. Continue?",
+                    confirmAction = { noteViewModel.proceedWithSyncActivation(userId!!) }
+                )
+                showSyncConfirmDialog = true
                 noteViewModel.resetSyncCheckState()
             }
             is SyncCheckState.RequiresUploadConfirmation -> {
-                if (userId != null) {
-                    syncConfirmationDetails = SyncConfirmationDetails(
-                        state = state,
-                        title = "Enable Cloud Sync?",
-                        text = "Local data found, but no cloud data. Enabling sync will UPLOAD your current local notes and folders to the cloud. Continue?",
-                        confirmAction = { noteViewModel.activateSyncAndUploadLocalData(userId) }
-                    )
-                    showSyncConfirmDialog = true
-                } else {
-                    Toast.makeText(context, "Error: Not logged in.", Toast.LENGTH_SHORT).show()
-                    isRealtimeSyncEnabled = false
-                }
+                syncConfirmationDetails = SyncConfirmationDetails(
+                    state = state,
+                    title = "Enable Cloud Sync?",
+                    text = "Local data found, but no cloud data. Enabling sync will UPLOAD your current local notes and folders to the cloud. Continue?",
+                    confirmAction = { noteViewModel.activateSyncAndUploadLocalData(userId!!) }
+                )
+                showSyncConfirmDialog = true
                 noteViewModel.resetSyncCheckState()
             }
             is SyncCheckState.CanEnableDirectly -> {
@@ -124,7 +113,7 @@ fun SettingsScreen(
                 appPreferences.saveRealtimeSyncEnabled(false)
                 noteViewModel.resetSyncCheckState()
             }
-            is SyncCheckState.Idle -> {  }
+            is SyncCheckState.Idle -> { }
         }
     }
     LaunchedEffect(syncActivationState) {
@@ -133,6 +122,7 @@ fun SettingsScreen(
                 Toast.makeText(context, state.message, Toast.LENGTH_SHORT).show()
             }
             is SyncActivationState.Success -> {
+                appPreferences.saveRealtimeSyncEnabled(true)
                 isRealtimeSyncEnabled = true
                 Toast.makeText(context, "Sync activated successfully!", Toast.LENGTH_LONG).show()
                 noteViewModel.resetSyncActivationState()
@@ -337,7 +327,7 @@ fun SettingsScreen(
                 title = { Text("Settings") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Filled.ArrowBack, "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
                     }
                 }
             )
@@ -401,7 +391,8 @@ fun SettingsScreen(
                                 if (userId != null) {
                                     noteViewModel.checkFirestoreStatusAndInitiateSync(userId)
                                 } else {
-                                    Toast.makeText(context, "Error: Not logged in.", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, "Error: Not logged in. Please sign in again.", Toast.LENGTH_LONG).show()
+                                    isRealtimeSyncEnabled = false
                                 }
                             } else {
                                 noteViewModel.disableSyncing()
@@ -409,7 +400,7 @@ fun SettingsScreen(
                                 Toast.makeText(context, "Sync disabled", Toast.LENGTH_SHORT).show()
                             }
                         },
-                        enabled = syncActivationState == SyncActivationState.Idle
+                        enabled = syncActivationState == SyncActivationState.Idle && isLoggedIn
                     )
                 }
                 if (syncActivationState is SyncActivationState.Running) {
@@ -488,10 +479,15 @@ fun SettingsScreen(
                 text = { Text("High precision above 50 may cause slow calculations or crashes. You can lower it later in settings if needed.") },
                 confirmButton = {
                     Button({
-                        appPreferences.saveDecimalPrecision(decimalPrecisionText.toInt())
-                        Toast.makeText(context, "Settings saved", Toast.LENGTH_SHORT).show()
                         showHighPrecisionWarning = false
-                        onBack()
+                        val precision = decimalPrecisionText.toIntOrNull()
+                        if (precision != null) {
+                            appPreferences.saveDecimalPrecision(precision)
+                            Toast.makeText(context, "Settings saved", Toast.LENGTH_SHORT).show()
+                            onBack()
+                        } else {
+                            showInvalidInputError = true
+                        }
                     }) { Text("OK") }
                 },
                 dismissButton = { Button(onClick = { showHighPrecisionWarning = false }) { Text("Cancel") } }
@@ -570,8 +566,17 @@ fun SettingsScreen(
                             details.confirmAction()
                             syncConfirmationDetails = null
                         },
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-                    ) { Text("Continue") }
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (details.state == SyncCheckState.RequiresDownloadConfirmation) MaterialTheme.colorScheme.errorContainer
+                            else MaterialTheme.colorScheme.primary
+                        )
+                    ) {
+                        Text(
+                            "Continue",
+                            color = if (details.state == SyncCheckState.RequiresDownloadConfirmation) MaterialTheme.colorScheme.onErrorContainer
+                            else MaterialTheme.colorScheme.onPrimary
+                        )
+                    }
                 },
                 dismissButton = {
                     Button(onClick = {

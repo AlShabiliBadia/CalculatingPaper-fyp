@@ -61,23 +61,16 @@ class NoteEditorLifecycleObserver(
             parentId = note?.parentId ?: currentFolderId
         )
 
-        try {
-            var savedNoteId = noteToSave.id
+        var savedNoteId = noteToSave.id
 
-            if (isNewNote) {
-                savedNoteId = noteViewModel.addNote(noteToSave)
-            } else {
-                noteViewModel.updateNote(noteToSave)
-            }
+        if (isNewNote) {
+            savedNoteId = noteViewModel.addNote(noteToSave)
+        } else {
+            noteViewModel.updateNote(noteToSave)
+        }
 
-            if (savedNoteId != 0L) {
-                appPreferences.saveLastOpenedItem(AppPreferences.TYPE_NOTE, savedNoteId)
-            } else if (isNewNote) {
-                println("Warning: Lifecycle save attempted for new note, but received 0L ID back.")
-            }
-
-        } catch (e: Exception) {
-            println("Error during lifecycle save: ${e.message}")
+        if (savedNoteId != 0L) {
+            appPreferences.saveLastOpenedItem(AppPreferences.TYPE_NOTE, savedNoteId)
         }
     }
 }

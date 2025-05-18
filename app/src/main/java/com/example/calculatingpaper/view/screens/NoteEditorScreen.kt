@@ -132,7 +132,7 @@ fun NoteEditorScreen(
         scope.launch {
             isMathKeyboardVisible = false
         }
-    }
+        }
     fun performCalculation() {
         try {
             val result = noteEditorViewModel.performCalculation(

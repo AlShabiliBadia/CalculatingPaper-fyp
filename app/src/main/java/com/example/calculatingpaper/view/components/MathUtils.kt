@@ -252,6 +252,7 @@ fun evaluateExpression(expression: String, variables: Map<String, BigDecimal>, i
                     "log₁₀" -> BigDecimalMath.log10(b, mathContext)
                     "log₂" -> BigDecimalMath.log2(b, mathContext)
                     "ln" -> BigDecimalMath.log(b, mathContext)
+                    "exp" -> BigDecimalMath.exp(b, mathContext)
                     else -> throw IllegalArgumentException("Unknown operator or function: $token")
                 }
                 stack.add(result)

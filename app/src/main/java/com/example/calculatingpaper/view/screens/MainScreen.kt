@@ -28,14 +28,16 @@ import com.example.calculatingpaper.view.components.RestorableItem
 import com.example.calculatingpaper.viewmodel.NoteViewModel
 import kotlinx.coroutines.launch
 import android.util.Log
+
+
 sealed class ItemToMove {
     data class NoteItem(val note: Note) : ItemToMove()
     data class FolderItem(val folder: Folder) : ItemToMove()
 }
 object SpecialFolders {
-    const val ARCHIVE: Long = -1L
-    const val TRASH: Long = -2L
-    const val ROOT: Long = 0L
+    const val ARCHIVE: Long = -2L
+    const val TRASH: Long = -3L
+    const val ROOT: Long = -1L
     fun isSpecial(id: Long) = id == ARCHIVE || id == TRASH
     fun isArchive(id: Long) = id == ARCHIVE
     fun isTrash(id: Long) = id == TRASH
@@ -705,11 +707,13 @@ fun MainScreen(
                             onShare = ::shareNote,
                             folderItemCounts = currentFolderTotalItemCounts,
                             onFolderClick = navigateToFolder,
-                            onNoteEdit = { note ->
+                            onNoteEdit = { noteFromList ->
                                 clearSelectionAndRenameState()
-                                currentNote = note
-                                appPreferences.saveLastOpenedItem(AppPreferences.TYPE_NOTE, note.id)
-                                showNoteEditor = true
+                                appPreferences.saveLastOpenedItem(AppPreferences.TYPE_NOTE, noteFromList.id)
+                                scope.launch {
+                                    currentNote = viewModel.getNoteById(noteFromList.id)
+                                    showNoteEditor = true
+                                }
                             },
                             onNoteRename = { id, newTitle ->
                                 scope.launch { viewModel.renameNoteTitle(id, newTitle) }
