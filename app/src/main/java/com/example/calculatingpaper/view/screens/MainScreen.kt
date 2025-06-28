@@ -1,10 +1,13 @@
 package com.example.calculatingpaper.view.screens
 import android.annotation.SuppressLint
 import android.content.Context
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -27,7 +30,6 @@ import com.example.calculatingpaper.view.components.RestoreDestinationSelector
 import com.example.calculatingpaper.view.components.RestorableItem
 import com.example.calculatingpaper.viewmodel.NoteViewModel
 import kotlinx.coroutines.launch
-import android.util.Log
 
 
 sealed class ItemToMove {
@@ -116,7 +118,6 @@ fun MainScreen(
     }
     LaunchedEffect(noteRequiringReparenting) {
         if (noteRequiringReparenting != null) {
-            Log.d("MainScreen", "Note requiring reparenting: ${noteRequiringReparenting!!.title}")
             showNoteRestoreSheet = true
             scope.launch { noteRestoreSheetState.show() }
         } else {
@@ -191,7 +192,6 @@ fun MainScreen(
     fun handleFolderDelete(folder: Folder) = viewModel.deleteFolderToTrash(folder)
     fun handleFolderDeletePermanently(folder: Folder) = scope.launch { viewModel.deleteFolderPermanently(folder) }
     fun handleFolderRestore(folder: Folder) = viewModel.restoreFolder(folder)
-    val navigateToFolder = navigateToFolderLambda
     fun navigateUp() {
         clearSelectionAndRenameState()
         searchQuery = ""
@@ -206,7 +206,7 @@ fun MainScreen(
                 SpecialFolders.ROOT
             }
         }
-        navigateToFolder(targetFolderId)
+        navigateToFolderLambda(targetFolderId)
     }
     val handleNoteMoveRequest: (Note) -> Unit = { note ->
         if (!note.isArchived && !note.isInTrash) {
@@ -285,7 +285,6 @@ fun MainScreen(
                     onClick = {
                         val nameToCreate = dialogFolderName.trim()
                         scope.launch {
-                            Log.d("MainScreen", "Creating folder with title: '${nameToCreate}'")
                             viewModel.createFolder(nameToCreate, currentFolderId)
                         }
                         showFolderDialog = false
@@ -449,47 +448,26 @@ fun MainScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .pointerInput(Unit) {
-                detectTapGestures(
-                    onTap = {
-                        clearSelectionAndRenameState()
-                        focusManager.clearFocus()
-                        keyboardController?.hide()
-                    }
-                )
+            .pointerInput(showNoteEditor) {
+                if (!showNoteEditor) {
+                    detectTapGestures(
+                        onTap = {
+                            if (!showNoteEditor) {
+                                clearSelectionAndRenameState()
+                                focusManager.clearFocus()
+                                keyboardController?.hide()
+                            }
+                        }
+                    )
+                }
             }
     ) {
         Scaffold(
             contentWindowInsets = WindowInsets.statusBars,
             topBar = {
-                Column(
-                    modifier = Modifier.padding(top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding())
-                ) {
-                    Surface(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable(
-                                enabled = (currentFolderId != SpecialFolders.ROOT) || SpecialFolders.isSpecial(currentFolderId),
-                                onClick = { navigateUp() }
-                            )
-                            .padding(horizontal = 16.dp, vertical = 8.dp),
-                        color = MaterialTheme.colorScheme.background
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            val allowNavigateUp = (currentFolderId != SpecialFolders.ROOT) || SpecialFolders.isSpecial(currentFolderId)
-                            if (allowNavigateUp) {
-                                Icon(
-                                    imageVector = Icons.Default.ArrowBack,
-                                    contentDescription = "Back",
-                                    modifier = Modifier.size(24.dp)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                            } else {
-                                Spacer(modifier = Modifier.width(32.dp))
-                            }
+                Column {
+                    TopAppBar(
+                        title = {
                             Text(
                                 text = when {
                                     SpecialFolders.isRoot(currentFolderId) -> "Main"
@@ -498,23 +476,86 @@ fun MainScreen(
                                     else -> folderPath.lastOrNull()?.title ?: "Folder"
                                 },
                                 style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                                modifier = Modifier.weight(1f)
                             )
+                        },
+                        navigationIcon = {
+                            val allowNavigateUp = (currentFolderId != SpecialFolders.ROOT) || SpecialFolders.isSpecial(currentFolderId)
+                            if (allowNavigateUp) {
+                                IconButton(onClick = { navigateUp() }) {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                        contentDescription = "Back"
+                                    )
+                                }
+                            }
+                        },
+                        actions = {
                             if (SpecialFolders.isRoot(currentFolderId)) {
-                                IconButton(onClick = {
-                                    clearSelectionAndRenameState()
-                                    searchQuery = ""
-                                    focusManager.clearFocus()
-                                    keyboardController?.hide()
-                                    navController.navigate(AppDestinations.SETTINGS_SCREEN)
-                                }) {
-                                    Icon(Icons.Default.Settings, "Settings")
+                                var menuExpanded by remember { mutableStateOf(false) }
+                                Box {
+                                    IconButton(onClick = { menuExpanded = true }) {
+                                        Icon(
+                                            imageVector = Icons.Default.MoreVert,
+                                            contentDescription = "More options"
+                                        )
+                                    }
+                                    DropdownMenu(
+                                        expanded = menuExpanded,
+                                        onDismissRequest = { menuExpanded = false },
+                                        modifier = Modifier.background(MaterialTheme.colorScheme.surface)
+                                    ) {
+                                        val itemColors = MenuDefaults.itemColors(
+                                            textColor = MaterialTheme.colorScheme.onSurface,
+                                            leadingIconColor = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+
+                                        DropdownMenuItem(
+                                            text = { Text("Settings") },
+                                            onClick = {
+                                                menuExpanded = false
+                                                navController.navigate(AppDestinations.SETTINGS_SCREEN)
+                                            },
+                                            leadingIcon = {
+                                                Icon(Icons.Default.Settings, contentDescription = "Settings")
+                                            },
+                                            colors = itemColors
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("Help") },
+                                            onClick = {
+                                                menuExpanded = false
+                                                navController.navigate(AppDestinations.HELP_SCREEN)
+                                            },
+                                            leadingIcon = {
+                                                Icon(Icons.AutoMirrored.Filled.HelpOutline, contentDescription = "Help")
+                                            },
+                                            colors = itemColors
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("About") },
+                                            onClick = {
+                                                menuExpanded = false
+                                                navController.navigate(AppDestinations.ABOUT_SCREEN)
+                                            },
+                                            leadingIcon = {
+                                                Icon(Icons.Default.Info, contentDescription = "About")
+                                            },
+                                            colors = itemColors
+                                        )
+                                    }
+
                                 }
                             } else {
                                 Spacer(Modifier.width(48.dp))
                             }
-                        }
-                    }
+                        },
+                        colors = TopAppBarDefaults.topAppBarColors(
+                            containerColor = MaterialTheme.colorScheme.surface,
+                            titleContentColor = MaterialTheme.colorScheme.onSurface,
+                            navigationIconContentColor = MaterialTheme.colorScheme.onSurface,
+                            actionIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    )
                     SearchBar(
                         onSearch = { searchQuery = it },
                         onSearchBarClicked = { clearSelectionAndRenameState() }
@@ -595,10 +636,13 @@ fun MainScreen(
                             notes = displayedNotes,
                             onShare = ::shareNote,
                             folderItemCounts = currentFolderTotalItemCounts,
-                            onFolderClick = navigateToFolder,
+                            onFolderClick = navigateToFolderLambda,
                             onNoteEdit = { noteFromList ->
                                 clearSelectionAndRenameState()
-                                appPreferences.saveLastOpenedItem(AppPreferences.TYPE_NOTE, noteFromList.id)
+                                appPreferences.saveLastOpenedItem(
+                                    AppPreferences.TYPE_NOTE,
+                                    noteFromList.id
+                                )
                                 scope.launch {
                                     currentNote = viewModel.getNoteById(noteFromList.id)
                                     showNoteEditor = true
@@ -616,7 +660,13 @@ fun MainScreen(
                             onFolderDelete = ::handleFolderDelete,
                             onFolderArchive = ::handleFolderArchive,
                             onFolderRestore = ::handleFolderRestore,
-                            onFolderDeletePermanently = { folder -> scope.launch { viewModel.deleteFolderPermanently(folder) } },
+                            onFolderDeletePermanently = { folder ->
+                                scope.launch {
+                                    viewModel.deleteFolderPermanently(
+                                        folder
+                                    )
+                                }
+                            },
                             onArchive = viewModel::archiveNote,
                             onPin = viewModel::toggleNotePin,
                             currentlySwipedNoteId = currentlySwipedNoteId,
@@ -633,8 +683,16 @@ fun MainScreen(
                             isRootFolder = true,
                             showSystemFolders = true,
                             systemFolders = listOf(
-                                Folder(id = SpecialFolders.ARCHIVE, title = "Archive", parentId = SpecialFolders.ROOT),
-                                Folder(id = SpecialFolders.TRASH, title = "Recycle Bin", parentId = SpecialFolders.ROOT)
+                                Folder(
+                                    id = SpecialFolders.ARCHIVE,
+                                    title = "Archive",
+                                    parentId = SpecialFolders.ROOT
+                                ),
+                                Folder(
+                                    id = SpecialFolders.TRASH,
+                                    title = "Recycle Bin",
+                                    parentId = SpecialFolders.ROOT
+                                )
                             ),
                             systemFolderCounts = mapOf(
                                 SpecialFolders.ARCHIVE to (archivedNotes.size + archivedFolders.size).toLong(),
@@ -706,10 +764,13 @@ fun MainScreen(
                             notes = displayedNotes,
                             onShare = ::shareNote,
                             folderItemCounts = currentFolderTotalItemCounts,
-                            onFolderClick = navigateToFolder,
+                            onFolderClick = navigateToFolderLambda,
                             onNoteEdit = { noteFromList ->
                                 clearSelectionAndRenameState()
-                                appPreferences.saveLastOpenedItem(AppPreferences.TYPE_NOTE, noteFromList.id)
+                                appPreferences.saveLastOpenedItem(
+                                    AppPreferences.TYPE_NOTE,
+                                    noteFromList.id
+                                )
                                 scope.launch {
                                     currentNote = viewModel.getNoteById(noteFromList.id)
                                     showNoteEditor = true
@@ -727,7 +788,13 @@ fun MainScreen(
                             onFolderDelete = ::handleFolderDelete,
                             onFolderArchive = ::handleFolderArchive,
                             onFolderRestore = ::handleFolderRestore,
-                            onFolderDeletePermanently = { folder -> scope.launch { viewModel.deleteFolderPermanently(folder) } },
+                            onFolderDeletePermanently = { folder ->
+                                scope.launch {
+                                    viewModel.deleteFolderPermanently(
+                                        folder
+                                    )
+                                }
+                            },
                             onArchive = viewModel::archiveNote,
                             onPin = viewModel::toggleNotePin,
                             currentlySwipedNoteId = currentlySwipedNoteId,
@@ -767,8 +834,12 @@ fun MainScreen(
                     showNoteEditor = false
                     currentNote = null
                 },
-                onCalculate = {  },
-                appPreferences = appPreferences
+
+                appPreferences = appPreferences,
+                onCalculate = {
+                    listRefreshKey = !listRefreshKey
+                },
+                navController = navController
             )
         }
     }

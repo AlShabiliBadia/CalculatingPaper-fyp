@@ -4,6 +4,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import kotlinx.coroutines.delay
+import kotlin.math.max
 
 @Composable
 fun NoteEditorErrorHandling(
@@ -13,36 +14,39 @@ fun NoteEditorErrorHandling(
     onTextFieldValueChange: (TextFieldValue) -> Unit,
     onNoteContentChange: (String) -> Unit
 ) {
-    if (showErrorState.value) {
-        LaunchedEffect(key1 = showErrorState.value) {
+    var errorText by remember { mutableStateOf("") }
+
+    LaunchedEffect(showErrorState.value) {
+        if (showErrorState.value) {
             val currentText = textFieldValue.text
             val cursorPosition = textFieldValue.selection.start
             val lineEnd = currentText.indexOf('\n', startIndex = cursorPosition).let {
                 if (it == -1) currentText.length else it
             }
 
-            val errorWithNewLine = "\nError: ${errorMessage.value}\n"
-            val newText = StringBuilder(currentText)
-                .insert(lineEnd, errorWithNewLine)
-                .toString()
+            val insertedErrorText = "\nError: ${errorMessage.value}\n"
+            val newTextWithHighlight = StringBuilder(currentText).insert(lineEnd, insertedErrorText).toString()
 
-            val newTextFieldValue = textFieldValue.copy(
-                text = newText,
-                selection = TextRange(lineEnd + errorWithNewLine.length)
+            onTextFieldValueChange(
+                TextFieldValue(
+                    text = newTextWithHighlight,
+                    selection = TextRange(lineEnd + insertedErrorText.length)
+                )
             )
-            onTextFieldValueChange(newTextFieldValue)
-            onNoteContentChange(newText)
+            onNoteContentChange(newTextWithHighlight)
 
-            delay(1000)
+            delay(3000)
 
-            if (newTextFieldValue.text.contains(errorWithNewLine)) {
-                val cleanText = newTextFieldValue.text.replace(errorWithNewLine, "")
-                onTextFieldValueChange(newTextFieldValue.copy(
+            val currentTextWithHighlight = textFieldValue.text
+            val cleanText = currentTextWithHighlight.replace(insertedErrorText, "")
+
+            onTextFieldValueChange(
+                TextFieldValue(
                     text = cleanText,
-                    selection = TextRange(maxOf(0, lineEnd))
-                ))
-                onNoteContentChange(cleanText)
-            }
+                    selection = TextRange(maxOf(0, lineEnd).coerceAtMost(cleanText.length))
+                )
+            )
+            onNoteContentChange(cleanText)
 
             showErrorState.value = false
         }

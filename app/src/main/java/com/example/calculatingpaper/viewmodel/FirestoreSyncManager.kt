@@ -147,7 +147,7 @@ class FirestoreSyncManager(
                                     cloudId = doc.id
                                 )
                                 noteDao.insertNote(noteToInsert)
-                            } catch (e: Exception) {
+                            } catch (_: Exception) {
                             }
                         }
                     }
@@ -258,7 +258,7 @@ class FirestoreSyncManager(
                     DocumentChange.Type.MODIFIED -> handleNoteModified(incomingNote)
                     DocumentChange.Type.REMOVED -> handleNoteRemoved(cloudId)
                 }
-            } catch (dbEx: Exception) {
+            } catch (_: Exception) {
             }
         }
     }
@@ -286,7 +286,7 @@ class FirestoreSyncManager(
                     DocumentChange.Type.MODIFIED -> handleFolderModified(incomingFolder)
                     DocumentChange.Type.REMOVED -> handleFolderRemoved(cloudId)
                 }
-            } catch (dbEx: Exception) {
+            } catch (_: Exception) {
             }
         }
     }
@@ -371,7 +371,7 @@ class FirestoreSyncManager(
                     noteDao.updateFolder(updatedSubFolder)
                 }
                 noteDao.deleteFolder(folderToDelete)
-            } catch (e: Exception) {
+            } catch (_: Exception) {
             }
         }
     }
@@ -409,7 +409,7 @@ class FirestoreSyncManager(
             } else {
                 notesCollection.document(noteCloudId).set(firestoreData, SetOptions.merge()).await()
             }
-        } catch (e: Exception) {
+        } catch (_: Exception) {
         }
     }
     private suspend fun writeFolderToFirestore(folder: Folder) {
@@ -430,7 +430,7 @@ class FirestoreSyncManager(
             } else {
                 foldersCollection.document(folderCloudId).set(firestoreData, SetOptions.merge()).await()
             }
-        } catch (e: Exception) {
+        } catch (_: Exception) {
         }
     }
     private suspend fun deleteNoteFromFirestore(cloudId: String) {
@@ -440,7 +440,7 @@ class FirestoreSyncManager(
                 .collection("notes").document(cloudId)
                 .delete()
                 .await()
-        } catch (e: Exception) {
+        } catch (_: Exception) {
         }
     }
     private suspend fun deleteFolderFromFirestore(cloudId: String) {
@@ -450,7 +450,7 @@ class FirestoreSyncManager(
                 .collection("folders").document(cloudId)
                 .delete()
                 .await()
-        } catch (e: Exception) {
+        } catch (_: Exception) {
         }
     }
     private suspend fun getLocalParentId(parentCloudId: String?): Long {

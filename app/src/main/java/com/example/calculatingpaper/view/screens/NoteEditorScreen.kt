@@ -1,5 +1,7 @@
 package com.example.calculatingpaper.view.screens
+import android.widget.Toast
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
@@ -23,6 +25,33 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.max
 import kotlin.math.min
+import androidx.navigation.NavController
+import com.example.calculatingpaper.AppDestinations
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
+
+private fun findPrecedingNumber(text: String, cursorPos: Int): Pair<String, Int>? {
+    if (cursorPos == 0) return null
+    var numStartIndex = -1
+    var i = cursorPos - 1
+    while (i >= 0) {
+        val char = text[i]
+        if (char.isDigit() || char == '.') {
+            numStartIndex = i
+            i--
+        } else {
+            break
+        }
+    }
+    if (numStartIndex != -1) {
+        val numberStr = text.substring(numStartIndex, cursorPos)
+        if (numberStr.toBigDecimalOrNull() != null) {
+            return Pair(numberStr, numStartIndex)
+        }
+    }
+    return null
+}
+
 @Composable
 fun NoteEditorScreen(
     note: Note?,
@@ -31,6 +60,7 @@ fun NoteEditorScreen(
     onSaveAction: suspend (Note) -> Unit,
     onCloseAction: () -> Unit,
     onCalculate: () -> Unit,
+    navController: NavController,
     lifecycleOwner: LifecycleOwner = LocalLifecycleOwner.current,
     appPreferences: AppPreferences = AppPreferences(LocalContext.current)
 ) {
@@ -48,12 +78,17 @@ fun NoteEditorScreen(
     val keyboardController = LocalSoftwareKeyboardController.current
     val focusRequester = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
-    val isDegreesModeState = remember { mutableStateOf(true) }
+    val isDegreesModeState = remember {
+        mutableStateOf(appPreferences.getCalculationMode())
+    }
     var isDegreesMode by isDegreesModeState
     val isMathKeyboardVisibleState = remember { mutableStateOf(false) }
     var isMathKeyboardVisible by isMathKeyboardVisibleState
-    var offsetX by remember { mutableStateOf(0f) }
-    var offsetY by remember { mutableStateOf(0f) }
+
+    var isInitialSetupComplete by remember { mutableStateOf(true) }
+
+    var offsetX by rememberSaveable { mutableStateOf(0f) }
+    var offsetY by rememberSaveable { mutableStateOf(0f) }
     val showErrorState: MutableState<Boolean> = remember { mutableStateOf(false) }
     val errorMessageState: MutableState<String> = remember { mutableStateOf("") }
     val originalContent = remember(note?.id) { note?.content ?: "" }
@@ -65,6 +100,8 @@ fun NoteEditorScreen(
     val noteTitleState = rememberUpdatedState(noteTitle)
     val coroutineScope = rememberCoroutineScope()
 
+    val context = LocalContext.current
+
 
 
     NoteEditorErrorHandling(
@@ -75,15 +112,12 @@ fun NoteEditorScreen(
         onNoteContentChange = { noteContent = it }
     )
 
-
-    LaunchedEffect(Unit) {
-        isMathKeyboardVisible = true
-        delay(100)
-        focusRequester.requestFocus()
-        keyboardController?.hide()
-        delay(50)
-        keyboardController?.hide()
+    LaunchedEffect(isMathKeyboardVisible) {
+        if (isMathKeyboardVisible) {
+            keyboardController?.hide()
+        }
     }
+
     DisposableEffect(lifecycleOwner, viewModel, note, appPreferences) {
         val observer = NoteEditorLifecycleObserver(
             noteViewModel = viewModel,
@@ -101,38 +135,76 @@ fun NoteEditorScreen(
         }
     }
 
-    fun showMathKeyboard() {
-        scope.launch {
-            val needsStateChange = !isMathKeyboardVisible
-            if (needsStateChange) {
-                isMathKeyboardVisible = true
-                delay(20)
-            }
-            focusRequester.requestFocus()
 
-            keyboardController?.hide()
-            if (needsStateChange) {
-                delay(50)
+    fun handleGraphRequest() {
+        val graphResult = noteEditorViewModel.prepareGraphDataFromSelection(
+            textFieldValue.text,
+            textFieldValue.selection,
+            isDegreesMode
+        )
+
+        if (graphResult != null) {
+
+            val stringVariables = graphResult.variables.mapValues { it.value.toPlainString() }
+            val variablesJson = Json.encodeToString(stringVariables)
+
+            navController.navigate(
+                AppDestinations.createGraphRoute(
+                    graphResult.equation,
+                    note?.id ?: 0L,
+                    variablesJson
+                )
+            )
+        } else {
+            errorMessageState.value = "Invalid equation or selection for graphing."
+            showErrorState.value = true
+        }
+    }
+
+
+    fun showMathKeyboard() {
+        if (isInitialSetupComplete) {
+            scope.launch {
                 keyboardController?.hide()
+                focusManager.clearFocus()
+                delay(100)
+                isMathKeyboardVisible = true
+                delay(50)
+                focusRequester.requestFocus()
             }
         }
     }
 
     fun showSystemKeyboard() {
-        scope.launch {
-            if (isMathKeyboardVisible) {
+        if (isInitialSetupComplete) {
+            scope.launch {
                 isMathKeyboardVisible = false
-                delay(20)
+                delay(50)
+                focusRequester.requestFocus()
+                keyboardController?.show()
             }
-            focusRequester.requestFocus()
         }
     }
 
     val onCloseKeyboard: () -> Unit = {
-        scope.launch {
-            isMathKeyboardVisible = false
+        if (isInitialSetupComplete) {
+            scope.launch {
+                keyboardController?.hide()
+                delay(50)
+                isMathKeyboardVisible = false
+                focusManager.clearFocus()
+            }
         }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            if (isMathKeyboardVisible) {
+                keyboardController?.hide()
+            }
         }
+    }
+
     fun performCalculation() {
         try {
             val result = noteEditorViewModel.performCalculation(
@@ -219,9 +291,29 @@ fun NoteEditorScreen(
     val debounceDelay = 750L
 
     fun handleValueChange(newValue: TextFieldValue) {
+        val oldText = textFieldValue.text
+        val newText = newValue.text
+        val oldCursor = textFieldValue.selection.start
+        val newCursor = newValue.selection.start
+
+        if (newText.length < oldText.length && newCursor < oldCursor) {
+            if (oldText.length - newText.length == 1) {
+                val specialSequence = MathKeyboardUtils.findSpecialSequenceBeforeCursor(oldText, oldCursor)
+
+                if (specialSequence != null) {
+                    val (seqStart, seqLength) = specialSequence
+                    val textWithSequenceRemoved = oldText.removeRange(seqStart, seqStart + seqLength)
+                    textFieldValue = TextFieldValue(textWithSequenceRemoved, TextRange(seqStart))
+                    noteContent = textWithSequenceRemoved
+                    return
+                }
+            }
+        }
+
         textFieldValue = newValue
         val newContent = newValue.text
         noteContent = newContent
+
         titleUpdateJob?.cancel()
         titleUpdateJob = scope.launch {
             delay(debounceDelay)
@@ -246,6 +338,8 @@ fun NoteEditorScreen(
         noteContent = newText
         textFieldValue = TextFieldValue(newText, TextRange(newCursorPosition))
     }
+
+
     fun handleSpecialKeyPress(key: String) {
         val currentTFV = textFieldValue
         var newTFV = currentTFV
@@ -271,10 +365,20 @@ fun NoteEditorScreen(
                 val text = currentTFV.text
                 val start = min(sel.start, sel.end)
                 val end = max(sel.start, sel.end)
+
                 if (start == end && start > 0) {
-                    val newText = text.removeRange(start - 1, start)
-                    val newPos = start - 1
-                    newTFV = TextFieldValue(newText, TextRange(newPos))
+                    val specialSequence = MathKeyboardUtils.findSpecialSequenceBeforeCursor(text, start)
+
+                    if (specialSequence != null) {
+                        val (seqStart, seqLength) = specialSequence
+                        val newText = text.removeRange(seqStart, seqStart + seqLength)
+                        val newPos = seqStart
+                        newTFV = TextFieldValue(newText, TextRange(newPos))
+                    } else {
+                        val newText = text.removeRange(start - 1, start)
+                        val newPos = start - 1
+                        newTFV = TextFieldValue(newText, TextRange(newPos))
+                    }
                 } else if (start < end) {
                     val newText = text.removeRange(start, end)
                     val newPos = start
@@ -287,6 +391,8 @@ fun NoteEditorScreen(
             textFieldValue = newTFV
         }
     }
+
+
     NoteEditorUI(
         noteTitle = noteTitle,
         textFieldValue = textFieldValue,
@@ -307,10 +413,15 @@ fun NoteEditorScreen(
         onKeyPress = { handleKeyPress(it) },
         onSpecialKeyPress = { handleSpecialKeyPress(it) },
         onCloseKeyboard = onCloseKeyboard,
-        onSetDegreesMode = { isDegreesMode = it },
+        onSetDegreesMode = { newMode ->
+            isDegreesMode = newMode
+            appPreferences.saveCalculationMode(newMode)
+        },
         onUpdateOffsets = { newX, newY ->
             offsetX = newX
             offsetY = newY
         },
+        onGraphRequest = { handleGraphRequest() }
     )
 }
+

@@ -18,6 +18,9 @@ class AppPreferences(context: Context) {
 
         private const val KEY_REALTIME_SYNC_ENABLED = "realtime_sync_enabled"
 
+        private const val KEY_CALCULATION_MODE_IS_DEGREES = "calculation_mode_is_degrees"
+
+
         var decimalPrecision: Int = 10
             private set
     }
@@ -26,6 +29,13 @@ class AppPreferences(context: Context) {
         decimalPrecision = sharedPreferences.getInt(KEY_DECIMAL_PRECISION, 10)
     }
 
+    fun saveCalculationMode(isDegrees: Boolean) {
+        sharedPreferences.edit().putBoolean(KEY_CALCULATION_MODE_IS_DEGREES, isDegrees).apply()
+    }
+
+    fun getCalculationMode(): Boolean {
+        return sharedPreferences.getBoolean(KEY_CALCULATION_MODE_IS_DEGREES, false)
+    }
 
     fun saveDecimalPrecision(precision: Int) {
         decimalPrecision = precision.coerceAtLeast(0)

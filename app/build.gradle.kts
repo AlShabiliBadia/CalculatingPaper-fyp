@@ -72,4 +72,7 @@ dependencies {
     implementation("com.google.firebase:firebase-firestore-ktx")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
 
+
+    implementation("com.github.PhilJay:MPAndroidChart:v3.1.0")
+
 }

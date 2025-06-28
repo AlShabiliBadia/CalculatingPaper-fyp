@@ -1,5 +1,6 @@
 package com.example.calculatingpaper.view.screens
-import androidx.compose.foundation.clickable
+
+import android.net.Uri
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -12,25 +13,29 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.ExperimentalComposeUiApi
-import androidx.compose.ui.platform.InterceptPlatformTextInput
-import kotlinx.coroutines.awaitCancellation
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusManager
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
-import androidx.compose.ui.platform.LocalTextInputService
-import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.example.calculatingpaper.view.components.MathKeyboard
 import kotlinx.coroutines.launch
-import kotlin.math.roundToInt
 
+import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.roundToInt
+import androidx.navigation.NavController
+import com.example.calculatingpaper.AppDestinations
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -56,14 +61,57 @@ fun NoteEditorUI(
     onCloseKeyboard: () -> Unit,
     onSetDegreesMode: (Boolean) -> Unit,
     onUpdateOffsets: (Float, Float) -> Unit,
+    onGraphRequest: () -> Unit
+
 ) {
+    val scope = rememberCoroutineScope()
     val keyboardController = LocalSoftwareKeyboardController.current
-    val customKeyboardHeight = 420.dp
     val scrollState = rememberScrollState()
     var hasFocus by remember { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
+    val interactionSource = remember { MutableInteractionSource() }
 
+    var keyboardHeightDp by remember { mutableStateOf(0.dp) }
+    val density = LocalDensity.current
 
+    LaunchedEffect(isMathKeyboardVisible) {
+        if (isMathKeyboardVisible) {
+            keyboardController?.hide()
+        }
+    }
+
+    LaunchedEffect(textFieldValue.selection, isMathKeyboardVisible) {
+        if (isMathKeyboardVisible) {
+            scope.launch {
+                scrollState.animateScrollTo(scrollState.maxValue)
+            }
+        }
+    }
+
+    val pointerInputModifier = Modifier.pointerInput(isMathKeyboardVisible) {
+        detectTapGestures(
+            onTap = { offset ->
+                if (isMathKeyboardVisible) {
+                    keyboardController?.hide()
+                } else {
+                    focusRequester.requestFocus()
+                }
+            }
+        )
+    }
+
+    LaunchedEffect(interactionSource, isMathKeyboardVisible) {
+        interactionSource.interactions.collect { interaction ->
+            if (isMathKeyboardVisible) {
+                keyboardController?.hide()
+            }
+        }
+    }
+
+    LaunchedEffect(hasFocus, isMathKeyboardVisible) {
+        if (hasFocus && isMathKeyboardVisible) {
+            keyboardController?.hide()
+        }
+    }
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
@@ -84,99 +132,97 @@ fun NoteEditorUI(
         }
     ) { paddingValues ->
         Box(
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+                .imePadding()
         ) {
-                Column(
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(bottom = if (isMathKeyboardVisible) keyboardHeightDp else 0.dp)
+                    .verticalScroll(scrollState)
+                    .padding(horizontal = 16.dp)
+            ) {
+                TextField(
+                    value = textFieldValue,
+                    onValueChange = onValueChange,
+                    enabled = true,
+                    placeholder = { Text("Enter your notes and calculations...") },
+                    keyboardOptions = KeyboardOptions.Default.copy(
+                        keyboardType = KeyboardType.Text,
+                        imeAction = if (isMathKeyboardVisible) ImeAction.None else ImeAction.Default
+                    ),
                     modifier = Modifier
-                        .fillMaxSize()
-                        .padding(paddingValues)
-                        .padding(bottom = if (isMathKeyboardVisible) customKeyboardHeight else 0.dp)
-                        .verticalScroll(scrollState)
-                        .padding(horizontal = 16.dp)
-                ) {
-                    TextField(
-                        value = textFieldValue,
-                        onValueChange = onValueChange,
-                        enabled = true,
-                        placeholder = { Text("Enter your notes and calculations...") },
-                        keyboardOptions = KeyboardOptions.Default,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f)
-                            .focusRequester(focusRequester)
-                            .onFocusChanged { focusState ->
-                                hasFocus = focusState.isFocused
-                                if (focusState.isFocused && isMathKeyboardVisible) {
-                                    scope.launch {
-                                        keyboardController?.hide()
-                                        kotlinx.coroutines.delay(10)
-                                        keyboardController?.hide()
-                                    }
-                                }
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .focusRequester(focusRequester)
+                        .onFocusChanged { focusState ->
+                            hasFocus = focusState.isFocused
+                            if (isMathKeyboardVisible && focusState.isFocused) {
+                                keyboardController?.hide()
                             }
-                            .pointerInput(isMathKeyboardVisible) {
-                                detectTapGestures(
-                                    onTap = {
-                                        if (isMathKeyboardVisible) {
-                                            focusRequester.requestFocus()
-                                            scope.launch {
-                                                keyboardController?.hide()
-                                                kotlinx.coroutines.delay(10)
-                                                keyboardController?.hide()
-                                            }
-                                        }
-                                    }
-                                )
-                            },
-                        interactionSource = remember { MutableInteractionSource() },
-                        colors = TextFieldDefaults.colors(
-                            focusedContainerColor = MaterialTheme.colorScheme.surface,
-                            unfocusedContainerColor = MaterialTheme.colorScheme.surface,
-                            disabledContainerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.5f),
-                            focusedIndicatorColor = MaterialTheme.colorScheme.primary,
-                            unfocusedIndicatorColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
-                            cursorColor = MaterialTheme.colorScheme.primary,
-                            focusedTextColor = MaterialTheme.colorScheme.onSurface,
-                            unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
-                        ),
-                        textStyle = MaterialTheme.typography.bodyLarge,
-                    )
-                }
+                        },
+                    interactionSource = interactionSource,
+                    colors = TextFieldDefaults.colors(
+                        focusedContainerColor = MaterialTheme.colorScheme.surface,
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+                        disabledContainerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.5f),
+                        focusedIndicatorColor = Color.Transparent,
+                        unfocusedIndicatorColor = Color.Transparent,
+                        disabledIndicatorColor = Color.Transparent,
+                        errorIndicatorColor = Color.Transparent,
+                        cursorColor = MaterialTheme.colorScheme.primary,
+                        focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                        unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+                    ),
+                    textStyle = MaterialTheme.typography.bodyLarge,
+                )
             }
-            if (!isMathKeyboardVisible) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(16.dp)
-                        .padding(paddingValues)
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .offset { IntOffset(offsetX.roundToInt(), offsetY.roundToInt()) }
-                            .pointerInput(Unit) {
-                                detectDragGestures { change, dragAmount ->
-                                    change.consume()
-                                    onUpdateOffsets(offsetX + dragAmount.x, offsetY + dragAmount.y)
-                                }
-                            },
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+
+            Column(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .offset { IntOffset(offsetX.roundToInt(), offsetY.roundToInt()) }
+                    .padding(16.dp)
+                    .pointerInput(Unit) {
+                        detectDragGestures { change, dragAmount ->
+                            change.consume()
+                            onUpdateOffsets(offsetX + dragAmount.x, offsetY + dragAmount.y)
+                        }
+                    },
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                if (!isMathKeyboardVisible) {
+                    Button(
+                        onClick = performCalculation,
+                        modifier = Modifier.width(120.dp)
                     ) {
-                        Button(onClick = performCalculation) {
-                            Text("Calculate")
-                        }
-                        Button(onClick = {
-                            showMathKeyboard()
-                        }) {
-                            Text("Keyboard")
-                        }
+                        Text("Calculate")
+                    }
+                    Button(
+                        onClick = { showMathKeyboard() },
+                        modifier = Modifier.width(120.dp)
+                    ) {
+                        Text("Keyboard")
                     }
                 }
+                Button(
+                    onClick = { onGraphRequest() },
+                    modifier = Modifier.width(120.dp)
+                ) {
+                    Text("Graph")
+                }
             }
+
             if (isMathKeyboardVisible) {
                 Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.BottomCenter
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .align(Alignment.BottomCenter)
+                        .onGloballyPositioned { coordinates ->
+                            keyboardHeightDp = with(density) { coordinates.size.height.toDp() }
+                        }
                 ) {
                     MathKeyboard(
                         onKeyPress = onKeyPress,
@@ -192,3 +238,4 @@ fun NoteEditorUI(
             }
         }
     }
+}
